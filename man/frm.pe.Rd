@@ -25,8 +25,8 @@ a logical value indicating whether conditional partial effects are to be compute
 }
   \item{at}{
 a numeric vector containing the covariates' values at which the conditional partial effects are to be computed or 
-the strings \code{"mean"} (the default) or \code{"median"}, in which cases the covariates are evaluated at their mean or 
-median values, respectively.
+the strings \code{"mean"} (the default) or \code{"median"}, in which cases the covariates are evaluated at their 
+mean or median values (or mode, in case of dummy variables), respectively.
 }
   \item{which.x}{
 a vector containing the names of the covariates to which the partial effects are to be computed.

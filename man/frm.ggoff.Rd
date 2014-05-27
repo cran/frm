@@ -18,15 +18,15 @@ frm.ggoff(object, version = "LM", table = T, ...)
 an object containing the results of an \code{frm} command.
 }
   \item{version}{
-a vector containing the test versions to use. Available options: \code{Wald}, \code{LM} (the default) and, for the binary 
-component of two-part models, \code{LR}. More than one option may be chosen.
+a vector containing the test versions to use. Available options: \code{Wald}, \code{LM} (the default) and, only
+for the binary component of two-part models, \code{LR}. More than one option may be chosen.
 }
   \item{table}{
 a logical value indicating whether a summary table with the test results should be printed.
 }
   \item{\dots}{
 Arguments to pass to \link[stats]{glm}, which is used to estimate the model under the alternative hypothesis when
-\code{version} is vector containing \code{"Wald"} or \code{"LR"}.
+\code{version} is a vector containing \code{"Wald"} or \code{"LR"}.
 }
 }
 
@@ -35,9 +35,12 @@ Arguments to pass to \link[stats]{glm}, which is used to estimate the model unde
 models estimated via \code{frm}. \code{frm.ggoff} may be used to test the link
 specification of: (i) one-part fractional regression models; (ii) the binary
 component of two-part fractional regression models; and (iii) the fractional
-component of two-part fractional regression models. See Ramalho, Ramalho
-and Murteira (2013) for details on the application of the GGOFF, GOFF1 and GOOFF2 tests in the
-fractional regression framework.
+component of two-part fractional regression models. When the \code{Wald} 
+version is implemented, it is taken into account the option that was chosen for 
+computing standard errors in the model under evaluation. For the \code{LM} version,
+a robust version is computed in cases (i) and (iii) and a conventional version in
+case (ii). See Ramalho, Ramalho and Murteira (2014) for details on the application of the 
+GGOFF, GOFF1 and GOOFF2 tests in the fractional regression framework.
 }
 
 \value{

@@ -1,4 +1,4 @@
-links.fun <- function(link) 
+frm.links <- function(link) 
 {
 	switch(link,
 		logit = {
@@ -58,10 +58,10 @@ links.fun <- function(link)
 	structure(list(linkfun=linkfun,linkinv=linkinv,mu.eta=mu.eta,gd=gd,valideta=valideta,name=link),class="link-glm")
 }
 
-frm.est <- function(y,x,link,method,variance,...)
+frm.est <- function(y,x,link,method,variance,var.type,var.eim,var.cluster,dfc,...)
 {
-	if(method=="ML") results <- glm(y ~ x-1,family=binomial(link=links.fun(link)),...)
-	if(method=="QML") results <- glm(y ~ x-1,family=quasibinomial(link=links.fun(link)),...)
+	if(method=="ML") results <- glm(y ~ x-1,family=binomial(link=frm.links(link)),...)
+	if(method=="QML") results <- glm(y ~ x-1,family=quasibinomial(link=frm.links(link)),...)
 	p <- results$coefficients
 	xbhat <- results$linear.predictors
 	yhat <- results$fitted.values
@@ -73,17 +73,18 @@ frm.est <- function(y,x,link,method,variance,...)
 
 	if(variance==F) return(ret.list)
 
-	p.var <- frm.var(y,x,yhat,xbhat,link,method)$var
+	p.var <- frm.var(y,x,yhat,xbhat,link,var.type,var.eim,var.cluster,dfc)$var
 	ret.list[["p.var"]] <- p.var
 
 	return(ret.list)
 }
 
-frm.var <- function(y,x,yhat,xbhat,link,method)
+frm.var <- function(y,x,yhat,xbhat,link,var.type,var.eim,var.cluster,dfc)
 {
 	n <- nrow(x)
 	uhat <- y-yhat
-	g <- links.fun(link)$mu.eta(xbhat)
+	g <- frm.links(link)$mu.eta(xbhat)
+	gd <- frm.links(link)$gd(xbhat)
 
 	A <- 0
 	B <- 0
@@ -91,19 +92,55 @@ frm.var <- function(y,x,yhat,xbhat,link,method)
 	for(jj in 1:n)
 	{
 		xx <- x[jj,]%*%t(x[jj,])
-		A <- A+xx*(g[jj]^2)/(yhat[jj]*(1-yhat[jj]))
-		if(method=="QML") B <- B+xx*(uhat[jj]^2)*(g[jj]^2)/((yhat[jj]*(1-yhat[jj]))^2)
+		A1 <- xx*(g[jj]^2)/(yhat[jj]*(1-yhat[jj]))
+		if(var.eim==T) A <- A+A1
+		if(var.eim==F)
+		{
+			div <- (yhat[jj]*(1-yhat[jj]))
+			A2 <- -xx*uhat[jj]*gd[jj]/div
+			A3 <- xx*uhat[jj]*(g[jj]^2)/(div*yhat[jj])
+			A4 <- -xx*uhat[jj]*(g[jj]^2)/(div*(1-yhat[jj]))
+
+			A <- A+A1+A2+A3+A4
+		}
+		if(var.type=="robust") B <- B+xx*(uhat[jj]^2)*(g[jj]^2)/((yhat[jj]*(1-yhat[jj]))^2)
 	}
+
+	if(var.type=="cluster")
+	{
+		id <- var.cluster
+		id.uni <- unique(id)
+
+		for(j in id.uni)
+		{
+			Xi <- matrix(x[id==j,],ncol=ncol(x))
+			yhati <- yhat[id==j]
+			gi <- g[id==j]
+			ui <- uhat[id==j]
+
+			ugGi <- ui*gi/(yhati*(1-yhati))
+
+			B <- B+t(Xi)%*%ugGi%*%t(ugGi)%*%Xi
+		}
+	}
+
+	if(dfc==T)
+	{
+		if(any(var.type==c("standard","robust"))) df <- n/(n-1)
+		if(var.type=="cluster") df <- length(id.uni)/(length(id.uni)-1)
+	}
+	else df <- 1
 
 	A.inv <- solve(A)
 
-	if(method=="ML") var <- A.inv
-	if(method=="QML") var <- A.inv%*%B%*%A.inv
+	if(var.type=="standard") var <- df*A.inv
+	if(var.type!="standard") var <- df*A.inv%*%B%*%A.inv
+
 
 	return(list(var=var))
 }
 
-frm.table <- function(y,yhat,p,p.var,x.names,type,link,converged)
+frm.table <- function(y,yhat,p,p.var,x.names,type,link,converged,var.type)
 {
 	if(converged==T)
 	{
@@ -141,6 +178,11 @@ frm.table <- function(y,yhat,p,p.var,x.names,type,link,converged)
 
 			print(results)
 			cat("\n")
+			if(var.type!="standard")
+			{
+				cat("Note:",var.type,"standard errors")
+				cat("\n\n")
+			}
 			cat("Number of observations:",n,"\n")
 			cat("R-squared:",round(R2,3),"\n")
 			cat("\n")
@@ -203,6 +245,8 @@ frm.tests.table <- function(test.which,S,Sp,ver,title1,title2=NA,n.ver=NA,test.g
 	stars[Sp>0.01 & Sp<=0.05] <- "**"
 	stars[Sp>0.05 & Sp<=0.1] <- "*"
 
+	if(all(is.na(S))) stop("NO WALD/LR TEST HAS ACHIEVED CONVERGENCE. USE OTHER TEST VERSIONS INSTEAD")
+
 	S <- formatC(S,digits=3,format="f")
 	Sp <- formatC(Sp,digits=3,format="f")
 	stars <- format(stars,justify="left")
@@ -245,9 +289,9 @@ frm.tests.table <- function(test.which,S,Sp,ver,title1,title2=NA,n.ver=NA,test.g
 	cat("\n")
 }
 
-frm.pe.var <- function(x,npar,which.x,xvar.names,type,pa,xbhata,ga,linka,pa.var,pb=NA,xbhatb=NA,gb=NA,linkb=NA,pb.var=NA,yhata=NA,yhatb=NA)
+frm.pe.var <- function(x,npar,which.x,x.names,xvar.names,type,pa,xbhata,ga,linka,pa.var,pb=NA,xbhatb=NA,gb=NA,linkb=NA,pb.var=NA,yhata=NA,yhatb=NA)
 {
-	gda <- links.fun(linka)$gd(xbhata)
+	gda <- frm.links(linka)$gd(xbhata)
 	PE1.sd <- matrix(NA,nrow=npar,ncol=npar)
 
 	if(type!="2P")
@@ -261,7 +305,7 @@ frm.pe.var <- function(x,npar,which.x,xvar.names,type,pa,xbhata,ga,linka,pa.var,
 	}
 	if(type=="2P")
 	{
-		gdb <- links.fun(linkb)$gd(xbhatb)
+		gdb <- frm.links(linkb)$gd(xbhatb)
 		PE2.sd <- matrix(NA,nrow=npar,ncol=npar)
 
 		for(i in 1:npar)
@@ -276,7 +320,8 @@ frm.pe.var <- function(x,npar,which.x,xvar.names,type,pa,xbhata,ga,linka,pa.var,
 		PE.sd <- PE1.sd%*%pa.var%*%t(PE1.sd)+PE2.sd%*%pb.var%*%t(PE2.sd)
 	}
 
-	PE.sd <- (diag(PE.sd)^0.5)[-1]
+	PE.sd <- diag(PE.sd)^0.5
+	if(any(x.names=="INTERCEPT")) PE.sd <- PE.sd[-1]
 
 	names(PE.sd) <- xvar.names
 	PE.sd <- PE.sd[which.x]
@@ -319,7 +364,13 @@ frm.pe.table <- function(PE.p,PE.sd,PE.type,which.x,xvar.names,title,at)
 
 		if(length(at)==1)
 		{
-			if(any(at==c("mean","median"))) cat("\nNote: covariates evaluated at",at,"values\n")
+			if(any(at==c("mean","median"))) cat("\nNote: covariates evaluated at",at,"(or mode, for dummies) values\n")
+			else
+			{
+				names(at) <- xvar.names
+				cat("\nNote: covariates evaluated at the following values:\n\n")
+				print(at)
+			}
 		}
 		else
 		{
@@ -330,7 +381,7 @@ frm.pe.table <- function(PE.p,PE.sd,PE.type,which.x,xvar.names,title,at)
 	}
 }
 
-frm <- function(y,x,x2=x,linkbin,linkfrac,type="1P",inflation=0,intercept=T,table=T,variance=T,...)
+frm <- function(y,x,x2=x,linkbin,linkfrac,type="1P",inflation=0,intercept=T,table=T,variance=T,var.type="default",var.eim=T,var.cluster,dfc=F,...)
 {
 	### 1. Error and warning messages
 
@@ -364,12 +415,30 @@ frm <- function(y,x,x2=x,linkbin,linkfrac,type="1P",inflation=0,intercept=T,tabl
 		warning("option variance changed from F to T, as required by table=T")
 	}
 
+	if(all(var.type!=c("standard","robust","cluster","default"))) stop(sQuote(var.type)," - var.type not recognised")
+	if(var.type=="cluster" & missing(var.cluster)) stop("option cluster for covariance matrix but no var.cluster supplied")
+
+	if(!is.logical(intercept)) stop("non-logical value assigned to option intercept")
+	if(!is.logical(table)) stop("non-logical value assigned to option table")
+	if(!is.logical(variance)) stop("non-logical value assigned to option variance")
+	if(!is.logical(var.eim)) stop("non-logical value assigned to option var.eim")
+	if(!is.logical(dfc)) stop("non-logical value assigned to option dfc")
+
 	### 2. Data and variables preparation
 
-	x <- as.matrix(x)
-	x2 <- as.matrix(x2)
+	if(any(type==c("1P","2Pfrac"))) x2 <- x
+
+	if(is.data.frame(x)) x <- as.matrix(x)
+	if(is.data.frame(x2)) x2 <- as.matrix(x2)
+
+	if(!is.matrix(x)) stop("x is not a matrix")
+	if(!is.matrix(x2)) stop("x2 is not a matrix")
+
 	x.names <- dimnames(x)[[2]]
 	x2.names <- dimnames(x2)[[2]]
+
+	if(is.null(x.names)) stop("x has no column names")
+	if(is.null(x2.names)) stop("x2 has no column names")
 
 	if(intercept==T)
 	{
@@ -378,6 +447,15 @@ frm <- function(y,x,x2=x,linkbin,linkfrac,type="1P",inflation=0,intercept=T,tabl
 
 		x.names <- c("INTERCEPT",x.names)
 		x2.names <- c("INTERCEPT",x2.names)
+	}
+
+	if(length(x.names)!=length(unique(x.names))) stop("some covariate names in x are identical")
+	if(length(x2.names)!=length(unique(x2.names))) stop("some covariate names in x2 are identical")
+
+	if(length(y)!=nrow(x)) stop("the number of observations for y and x are different")
+	if(var.type=="cluster")
+	{
+		if(length(y)!=length(var.cluster)) stop("var.cluster does not have the appropriate dimension")
 	}
 
 	if(any(type==c("2Pbin","2P")))
@@ -392,12 +470,16 @@ frm <- function(y,x,x2=x,linkbin,linkfrac,type="1P",inflation=0,intercept=T,tabl
 		{
 			yf <- y[y>0]
 			x2f <- x2[y>0,]
+			if(var.type=="cluster") var.cluf <- var.cluster[y>0]
 		}
 		if(inflation==1)
 		{
 			yf <- y[y<1]
 			x2f <- x2[y<1,]
+			if(var.type=="cluster") var.cluf <- var.cluster[y<1]
 		}
+
+		if(length(yf)!=nrow(x2f)) stop("the number of observations for y and x2 are different")
 	}
 
 	### 3. Estimation
@@ -406,8 +488,11 @@ frm <- function(y,x,x2=x,linkbin,linkfrac,type="1P",inflation=0,intercept=T,tabl
 
 	if(any(type==c("2Pbin","2P")))
 	{
+		if(var.type=="default") var.ty <- "standard"
+		else var.ty <- var.type
+
 		method <- "ML"
-		results <- frm.est(yb,x,linkbin,method,variance,...)
+		results <- frm.est(yb,x,linkbin,method,variance,var.ty,var.eim,var.cluster,dfc,...)
 		p <- results$p
 		if(variance==T) p.var <- results$p.var
 		yhat1 <- results$yhat
@@ -415,7 +500,7 @@ frm <- function(y,x,x2=x,linkbin,linkfrac,type="1P",inflation=0,intercept=T,tabl
 		converged1 <- results$converged
 		LL <- results$LL
 
-		if(table==T) frm.table(yb,yhat1,p,p.var,x.names,"2Pbin",linkbin,converged1)
+		if(table==T) frm.table(yb,yhat1,p,p.var,x.names,"2Pbin",linkbin,converged1,var.ty)
 
 		formula <- yb ~ x - 1
 		names(p) <- x.names
@@ -425,6 +510,10 @@ frm <- function(y,x,x2=x,linkbin,linkfrac,type="1P",inflation=0,intercept=T,tabl
 		{ 
 			dimnames(p.var) <- list(x.names,x.names)
 			resBIN[["p.var"]] <- p.var
+			resBIN[["var.type"]] <- var.ty
+			resBIN[["var.eim"]] <- var.eim
+			resBIN[["dfc"]] <- dfc
+			if(var.type=="cluster") resBIN[["var.cluster"]] <- var.cluster
 		}
 	}
 
@@ -435,24 +524,28 @@ frm <- function(y,x,x2=x,linkbin,linkfrac,type="1P",inflation=0,intercept=T,tabl
 			yy <- y
 			xx2 <- x2
 			ty <- "1P"
+			if(var.type=="cluster") var.clu <- var.cluster
 		}
 		else
 		{
 			yy <- yf
 			xx2 <- x2f
 			ty <- "2Pfrac"
+			if(var.type=="cluster") var.clu <- var.cluf
 		}
 
+		if(var.type=="default") var.ty <- "robust"
+		else var.ty <- var.type
+
 		method <- "QML"
-		results <- frm.est(yy,xx2,linkfrac,method,variance,...)
+		results <- frm.est(yy,xx2,linkfrac,method,variance,var.ty,var.eim,var.clu,dfc,...)
 		p <- results$p
 		if(variance==T) p.var <- results$p.var
 		yhat <- results$yhat
 		xbhat <- results$xbhat
 		converged2 <- results$converged
 
-		if(table==T) frm.table(yy,yhat,p,p.var,x2.names,ty,linkfrac,converged2)
-
+		if(table==T) frm.table(yy,yhat,p,p.var,x2.names,ty,linkfrac,converged2,var.ty)
 
 		formula <- yy ~ xx2 - 1
 		names(p) <- x2.names
@@ -462,12 +555,16 @@ frm <- function(y,x,x2=x,linkbin,linkfrac,type="1P",inflation=0,intercept=T,tabl
 		{ 
 			dimnames(p.var) <- list(x2.names,x2.names)
 			resFRAC[["p.var"]] <- p.var
+			resFRAC[["var.type"]] <- var.ty
+			resFRAC[["var.eim"]] <- var.eim
+			resFRAC[["dfc"]] <- dfc
+			if(var.type=="cluster") resFRAC[["var.cluster"]] <- var.clu
 		}
 	}
 
 	if(type=="2P")
 	{
-		yhat2 <- links.fun(linkfrac)$linkinv(x2%*%p)
+		yhat2 <- frm.links(linkfrac)$linkinv(x2%*%p)
 		yhat <- yhat1*yhat2
 
 		converged <- converged1*converged2
@@ -496,6 +593,8 @@ frm.reset <- function(object,lastpower.vec=3,version="LM",table=T,...)
 	if(object$converged==0) stop("object is not the output of a successful (converged) frm command")
 	if(object$method!="ML" & any(version=="LR")) stop("LR tests require ML estimation")
 	if(any(lastpower.vec<2)) stop(sQuote(lastpower.vec)," - lastpower.vec contains elements lower than 2")
+	if(all(version!="LM") & all(version!="Wald") & all(version!="LR")) stop("test version not correctly specified")
+	if(!is.logical(table)) stop("non-logical value assigned to option table")
 
 	### 2. Recovering definitions and estimates
 
@@ -508,7 +607,16 @@ frm.reset <- function(object,lastpower.vec=3,version="LM",table=T,...)
 	method <- object$method
 	link <- object$link
 	type <- object$type
-	LL0 <- object$LL
+
+	if(any(version=="Wald"))
+	{
+		if(is.null(object$var.type)) stop("Wald test required but frm command was run with variance = F")
+		var.type <- object$var.type
+		var.eim <- object$var.eim
+		dfc <- object$dfc
+		if(var.type=="cluster") var.cluster <- object$var.cluster
+	}
+	if(any(version=="LR")) LL0 <- object$LL
 	if(type=="1P") title <- paste("Fractional",link,"model")
 	if(type=="2Pbin") title <- paste("Binary",link,"component of a two-part model")
 	if(type=="2Pfrac") title <- paste("Fractional",link,"component of a two-part model")
@@ -517,7 +625,7 @@ frm.reset <- function(object,lastpower.vec=3,version="LM",table=T,...)
 
 	lastpower.vec <- round(lastpower.vec,0)
 
-	g <- links.fun(link)$mu.eta(xbhat)
+	g <- frm.links(link)$mu.eta(xbhat)
 	gx <- g*x
 
 	z.all <- as.matrix(xbhat^2)
@@ -546,7 +654,7 @@ frm.reset <- function(object,lastpower.vec=3,version="LM",table=T,...)
 		}
 		if(any(version=="LR") | any(version=="Wald"))
 		{
-			if(any(version=="Wald")) results <- frm.est(y,cbind(x,z),link,method,T,...)
+			if(any(version=="Wald")) results <- frm.est(y,cbind(x,z),link,method,T,var.type,var.eim,var.cluster,dfc,...)
 			else results <- frm.est(y,cbind(x,z),link,method,F,...)
 
 			if(any(version=="LR"))
@@ -615,6 +723,8 @@ frm.ggoff <- function(object,version="LM",table=T,...)
 	if(object$type=="2P") stop("GGOFF tests are not applicable to a two-part model")
 	if(object$converged==0) stop("object is not the output of a successful (converged) frm command")
 	if(object$method!="ML" & any(version=="LR")) stop("LR tests require ML estimation")
+	if(all(version!="LM") & all(version!="Wald") & all(version!="LR")) stop("test version not correctly specified")
+	if(!is.logical(table)) stop("non-logical value assigned to option table")
 
 	### 2. Recovering definitions and estimates
 
@@ -627,7 +737,16 @@ frm.ggoff <- function(object,version="LM",table=T,...)
 	method <- object$method
 	link <- object$link
 	type <- object$type
-	LL0 <- object$LL
+
+	if(any(version=="Wald"))
+	{
+		if(is.null(object$var.type)) stop("Wald test required but frm command was run with variance = F")
+		var.type <- object$var.type
+		var.eim <- object$var.eim
+		dfc <- object$dfc
+		if(var.type=="cluster") var.cluster <- object$var.cluster
+	}
+	if(any(version=="LR")) LL0 <- object$LL
 	if(type=="1P") title <- paste("Fractional",link,"model")
 	if(type=="2Pbin") title <- paste("Binary",link,"component of a two-part model")
 	if(type=="2Pfrac") title <- paste("Fractional",link,"component of a two-part model")
@@ -640,7 +759,7 @@ frm.ggoff <- function(object,version="LM",table=T,...)
 	test <- NA
 	tests <- c("GOFF1","GOFF2","GGOFF")
 
-	g <- links.fun(link)$mu.eta(xbhat)
+	g <- frm.links(link)$mu.eta(xbhat)
 	gx <- g*x
 	if(link!="loglog") z1 <- yhat*log(yhat)/g
 	if(link!="cloglog") z2 <- (1-yhat)*log(1-yhat)/g
@@ -674,7 +793,7 @@ frm.ggoff <- function(object,version="LM",table=T,...)
 			}
 			if(any(version=="LR") | any(version=="Wald"))
 			{
-				if(any(version=="Wald")) results <- frm.est(y,cbind(x,z),link,method,T,...)
+				if(any(version=="Wald")) results <- frm.est(y,cbind(x,z),link,method,T,var.type,var.eim,var.cluster,dfc,...)
 				else results <- frm.est(y,cbind(x,z),link,method,F,...)
 
 				if(any(version=="LR"))
@@ -755,6 +874,10 @@ frm.ptest <- function(object1,object2,version="Wald",table=T)
 	if(object1$converged==0) stop("object1 is not the output of a successful (converged) frm command")
 	if(object2$converged==0) stop("object2 is not the output of a successful (converged) frm command")
 
+	if(all(version!="LM") & all(version!="Wald")) stop("test version not correctly specified")
+
+	if(!is.logical(table)) stop("non-logical value assigned to option table")
+
 	### 2. Variables and other information for the tests
 
 	# 2.1. Model 1
@@ -772,8 +895,7 @@ frm.ptest <- function(object1,object2,version="Wald",table=T)
 		yhat1 <- object1$yhat
 		xbhat1 <- object1$xbhat
 
-
-		g1 <- links.fun(link1)$mu.eta(xbhat1)
+		g1 <- frm.links(link1)$mu.eta(xbhat1)
 
 		gx1 <- g1*x1
 
@@ -794,7 +916,7 @@ frm.ptest <- function(object1,object2,version="Wald",table=T)
 		x1a <- model.matrix(object1$resBIN$formula)
 		yhat1a <- object1$resBIN$yhat
 		xbhat1a <- object1$resBIN$xbhat
-		g1a <- links.fun(link1a)$mu.eta(xbhat1a)
+		g1a <- frm.links(link1a)$mu.eta(xbhat1a)
 		dimnames(x1a)[[2]] <- object1$resBIN$x.names
 
 		link1b <- object1$resFRAC$link
@@ -802,8 +924,8 @@ frm.ptest <- function(object1,object2,version="Wald",table=T)
 
 		x1b <- object1$x2base
 		xbhat1b <- x1b%*%object1$resFRAC$p
-		yhat1b <- links.fun(link1b)$linkinv(xbhat1b)
-		g1b <- links.fun(link1b)$mu.eta(xbhat1b)
+		yhat1b <- frm.links(link1b)$linkinv(xbhat1b)
+		g1b <- frm.links(link1b)$mu.eta(xbhat1b)
 		dimnames(x1b)[[2]] <- object1$resFRAC$x.names
 
 		yhat1 <- object1$yhat2P
@@ -831,7 +953,7 @@ frm.ptest <- function(object1,object2,version="Wald",table=T)
 
 		yhat2 <- object2$yhat
 		xbhat2 <- object2$xbhat
-		g2 <- links.fun(link2)$mu.eta(xbhat2)
+		g2 <- frm.links(link2)$mu.eta(xbhat2)
 
 		gx2 <- g2*x2
 
@@ -849,7 +971,7 @@ frm.ptest <- function(object1,object2,version="Wald",table=T)
 		x2a <- model.matrix(object2$resBIN$formula)
 		yhat2a <- object2$resBIN$yhat
 		xbhat2a <- object2$resBIN$xbhat
-		g2a <- links.fun(link2a)$mu.eta(xbhat2a)
+		g2a <- frm.links(link2a)$mu.eta(xbhat2a)
 		dimnames(x2a)[[2]] <- object2$resBIN$x.names
 
 		link2b <- object2$resFRAC$link
@@ -857,8 +979,8 @@ frm.ptest <- function(object1,object2,version="Wald",table=T)
 
 		x2b <- object2$x2base
 		xbhat2b <- x2b%*%object2$resFRAC$p
-		yhat2b <- links.fun(link2b)$linkinv(xbhat2b)
-		g2b <- links.fun(link2b)$mu.eta(xbhat2b)
+		yhat2b <- frm.links(link2b)$linkinv(xbhat2b)
+		g2b <- frm.links(link2b)$mu.eta(xbhat2b)
 		dimnames(x2b)[[2]] <- object2$resFRAC$x.names
 
 		yhat2 <- object2$yhat2P
@@ -959,11 +1081,16 @@ frm.ptest <- function(object1,object2,version="Wald",table=T)
 			ver <- c(ver,"Wald")
 
 			yt <- yj-yhatj
+			gxzj <- cbind(gxj,gzj)
+			results <- lm(yt ~ gxzj-1)
 
-			results <- lm(yt ~ gxj+gzj-1)
-			Sj <- summary.lm(results)$coefficients[ncol(gxj)+1,3]
+			gzj.b <- results$coefficients[ncol(gxzj)]
+			dfcc <- nrow(gxzj)/(nrow(gxzj)-ncol(gxzj))
+			gzj.var <- dfcc*(solve(t(gxzj)%*%gxzj)%*%t(gxzj)%*%diag(results$residuals^2)%*%gxzj%*%solve(t(gxzj)%*%gxzj))[ncol(gxj)+1,ncol(gxj)+1]
+
+			Sj <- as.vector(gzj.b/(gzj.var^0.5))
 			S <- c(S,Sj)
-			Spj <- summary.lm(results)$coefficients[ncol(gxj)+1,4]
+			Spj <- 2*(1-pt(abs(Sj),nrow(gxzj)-ncol(gxzj)))
 			Sp <- c(Sp,Spj)
 		}
 	}
@@ -988,8 +1115,13 @@ frm.pe <- function(object,APE=T,CPE=F,at=NULL,which.x=NULL,variance=T,table=T)
 	if(is.null(object$class)) stop("object is not the output of an frm command")
 	if(object$class!="frm") stop("object is not the output of an frm command")
 
+	if(!is.logical(APE)) stop("non-logical value assigned to option APE")
+	if(!is.logical(CPE)) stop("non-logical value assigned to option CPE")
+	if(!is.logical(variance)) stop("non-logical value assigned to option variance")
+	if(!is.logical(table)) stop("non-logical value assigned to option table")
+
 	if(all(c(APE,CPE)==F)) stop("You must specify at least one option: APE and/or CPE")
-	if(CPE==F & !is.null(at)) stop("option at is only required for cpe")
+	if(CPE==F & !is.null(at)) stop("option at is only required for CPE")
 
 	if(object$converged==0) stop("object is not the output of a successful (converged) frm command")
 
@@ -1062,13 +1194,14 @@ frm.pe <- function(object,APE=T,CPE=F,at=NULL,which.x=NULL,variance=T,table=T)
 	{
 		PE.type <- "APE"
 
-		p.pe <- matrix(rep(pa[-1],each=n),ncol=k)
+		if(any(x.names=="INTERCEPT")) p.pe <- matrix(rep(pa[-1],each=n),ncol=k)
+ 		else p.pe <- matrix(rep(pa,each=n),ncol=k)
 		dimnames(p.pe) <- list(NULL,xvar.names)
 
 		if(type!="2P") xbhata <- object$xbhat
 		if(type=="2P") xbhata <- object$resBIN$xbhat
 
-		ga <- links.fun(linka)$mu.eta(xbhata)
+		ga <- frm.links(linka)$mu.eta(xbhata)
 		PE.p <- as.matrix(p.pe[,which.x])*ga
 
 		if(type!="2P") PE.p <- apply(PE.p,2,mean)
@@ -1078,12 +1211,13 @@ frm.pe <- function(object,APE=T,CPE=F,at=NULL,which.x=NULL,variance=T,table=T)
 			yhata <- object$resBIN$yhat
 			PEa.p <- as.matrix(p.pe[,which.x])*ga
 
-			p.pe <- matrix(rep(pb[-1],each=n),ncol=k)
+			if(any(x.names=="INTERCEPT")) p.pe <- matrix(rep(pb[-1],each=n),ncol=k)
+ 			else p.pe <- matrix(rep(pb,each=n),ncol=k)
 			dimnames(p.pe) <- list(NULL,xvar.names)
 
 			xbhatb <- as.vector(x%*%pb)
-			gb <- links.fun(linkb)$mu.eta(xbhatb)
-			yhatb <- links.fun(linkb)$linkinv(xbhatb)
+			gb <- frm.links(linkb)$mu.eta(xbhatb)
+			yhatb <- frm.links(linkb)$linkinv(xbhatb)
 			PEb.p <- as.matrix(p.pe[,which.x])*gb
 
 			PE.p <- apply(PEb.p*yhata+PE.p*yhatb,2,mean)
@@ -1093,8 +1227,8 @@ frm.pe <- function(object,APE=T,CPE=F,at=NULL,which.x=NULL,variance=T,table=T)
 
 		if(variance==T)
 		{
-			if(type!="2P") PE.sd <- frm.pe.var(x,npar,which.x,xvar.names,type,pa,xbhata,ga,linka,pa.var)
-			if(type=="2P") PE.sd <- frm.pe.var(x,npar,which.x,xvar.names,type,pa,xbhata,ga,linka,pa.var,pb,xbhatb,gb,linkb,pb.var,yhata,yhatb)
+			if(type!="2P") PE.sd <- frm.pe.var(x,npar,which.x,x.names,xvar.names,type,pa,xbhata,ga,linka,pa.var)
+			if(type=="2P") PE.sd <- frm.pe.var(x,npar,which.x,x.names,xvar.names,type,pa,xbhata,ga,linka,pa.var,pb,xbhatb,gb,linkb,pb.var,yhata,yhatb)
 			resAPE[["PE.sd"]] <- PE.sd
 		}
 
@@ -1120,27 +1254,34 @@ frm.pe <- function(object,APE=T,CPE=F,at=NULL,which.x=NULL,variance=T,table=T)
 
 				xdum <- apply(x,2,function(a) all(a %in% c(0,1)))
 				xm[xdum==T] <- round(xm,0)[xdum==T]
-				xm <- xm
 			}
-			else xm <- c(1,at)
+			else
+			{
+				if(any(x.names=="INTERCEPT")) xm <- c(1,at)
+				else xm <- at
+			}
 		}
 		else
 		{
 			if(length(at)!=k) stop("at not appropriately specified")
-			else xm <- c(1,at)
+			else
+			{
+				if(any(x.names=="INTERCEPT")) xm <- c(1,at)
+				else xm <- at
+			}
 		}
 
 		xbhata <- as.vector(xm%*%pa)
-		ga <- links.fun(linka)$mu.eta(xbhata)
+		ga <- frm.links(linka)$mu.eta(xbhata)
 		PE.p <- pa[which.x]*ga
 
 		if(type=="2P")
 		{
-			yhata <- links.fun(linka)$linkinv(xbhata)
+			yhata <- frm.links(linka)$linkinv(xbhata)
 
 			xbhatb <- as.vector(xm%*%pb)
-			gb <- links.fun(linkb)$mu.eta(xbhatb)
-			yhatb <- links.fun(linkb)$linkinv(xbhatb)
+			gb <- frm.links(linkb)$mu.eta(xbhatb)
+			yhatb <- frm.links(linkb)$linkinv(xbhatb)
 			PEb.p <- pb[which.x]*gb
 
 			PE.p <- PEb.p*yhata+PE.p*yhatb
@@ -1150,8 +1291,8 @@ frm.pe <- function(object,APE=T,CPE=F,at=NULL,which.x=NULL,variance=T,table=T)
 
 		if(variance==T)
 		{
-			if(type!="2P") PE.sd <- frm.pe.var(x,npar,which.x,xvar.names,type,pa,xbhata,ga,linka,pa.var)
-			if(type=="2P") PE.sd <- frm.pe.var(x,npar,which.x,xvar.names,type,pa,xbhata,ga,linka,pa.var,pb,xbhatb,gb,linkb,pb.var,yhata,yhatb)
+			if(type!="2P") PE.sd <- frm.pe.var(x,npar,which.x,x.names,xvar.names,type,pa,xbhata,ga,linka,pa.var)
+			if(type=="2P") PE.sd <- frm.pe.var(x,npar,which.x,x.names,xvar.names,type,pa,xbhata,ga,linka,pa.var,pb,xbhatb,gb,linkb,pb.var,yhata,yhatb)
 			resCPE[["PE.sd"]] <- PE.sd
 		}
 

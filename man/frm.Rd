@@ -11,7 +11,8 @@ Fitting Fractional Regression Models
 
 \usage{
 frm(y, x, x2 = x, linkbin, linkfrac, type = "1P", inflation = 0, intercept = T,
-	table = T, variance = T, ...)
+	table = T, variance = T, var.type = "default", var.eim = T, var.cluster,
+	dfc = F,...)
 }
 
 \arguments{
@@ -19,11 +20,11 @@ frm(y, x, x2 = x, linkbin, linkfrac, type = "1P", inflation = 0, intercept = T,
 a numeric vector containing the values of the response variable.
 }
   \item{x}{
-a numeric matrix containing the values of the covariates.
+a numeric matrix, with column names, containing the values of the covariates.
 }
   \item{x2}{
-a numeric matrix containing the values of the covariates in the fractional component of two-part models if 
-option \code{type = "2P"} is defined. Defaults to \code{x}.
+a numeric matrix, with column names, containing the values of the covariates in the fractional component of two-part
+models if option \code{type = "2P"} is defined. Defaults to \code{x}.
 }
   \item{linkbin}{
 a description of the link function to use in the binary component of a two-part fractional regression model. 
@@ -52,6 +53,24 @@ a logical value indicating whether a summary table with the regression results s
   \item{variance}{
 a logical value indicating whether the variance of the estimated parameters should be calculated. Defaults to 
 \code{TRUE} whenever \code{table = TRUE}.
+}
+  \item{var.type}{
+a description of the type of variance of the estimated parameters to be calculated. Options are \code{standard} (recommended 
+for models estimated by maximum likelihood, such as the binary component of two-part models), \code{robust} (recommended 
+for models estimated by quasi-maximum likelihood, such as standard fractional regression models or the fractional 
+component of a two-part fractional regression model), \code{cluster} (recommended in the case of panel data) and 
+\code{default} (implements the \code{standard} or \code{robust} versions as appropriate).
+}
+  \item{var.eim}{
+a logical value indicating whether the expected information matrix should be used in the calculation of the variance. When 
+false, the observation information matrix will be used. Defaults to \code{TRUE}. 
+}
+  \item{var.cluster}{
+a numeric vector containing the values of the variable that specifies to which cluster each observation belongs.
+}
+  \item{dfc}{
+a logical value indicating whether a degrees of freedom correction should be applied to the covariance matrix. Defaults to 
+\code{FALSE}.
 }
   \item{\dots}{
 Arguments to pass to \link[stats]{glm}.
@@ -103,16 +122,26 @@ When \code{type = "1P" or "2Pfrac"}, \code{frm} returns a list with the followin
 If \code{variance = TRUE} or \code{table = TRUE}, the previous list also contains the following element:
   \item{p.var}{a named covariance matrix.
 }
+  \item{var.type}{covariance matrix type.
+}
+  \item{var.eim}{logical. Was the expected information matrix used in the computation of the covariance matrix?
+}
+  \item{dfc}{logical. Was a degrees of freedom correction used for the computation of the covariance matrix?
+}
+
+If \code{var.type = "cluster"}, the list also contains the following element:
+  \item{var.cluster}{the variable that specifies to which cluster each observation belongs.
+}
 
 When \code{type = "2Pbin"}, \code{frm} returns a similar list with the following additional element:
   \item{LL}{the value of the log-likelihood.
 }
 
-When \code{type = "2P"}, \code{frm} returns the two previous lists, indexed by the prefixes \code{resBIN} and 
+When \code{type = "2P"}, \code{frm} returns the previous lists, indexed by the prefixes \code{resBIN} and 
 \code{resFRAC}, and the following additional elements:
-  \item{class}{see above.
+  \item{class}{"frm".
 }
-  \item{type}{see above.
+  \item{type}{"2P".
 }
   \item{ybase}{a numeric vector containing the values of the response variable.
 }
@@ -120,7 +149,7 @@ When \code{type = "2P"}, \code{frm} returns the two previous lists, indexed by t
 }
   \item{yhat2P}{the overall fitted mean values.
 }
-  \item{converged}{see above.
+  \item{converged}{logical. Were the algorithms judged to have converged in both parts of the model?
 }
 }
 

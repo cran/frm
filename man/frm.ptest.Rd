@@ -22,7 +22,7 @@ an object containing the results of another \code{frm} command.
 }
   \item{version}{
 a vector containing the test versions to use. Available options: \code{Wald} (the default) and \code{LM}. 
-Both options may be chosen at the same time.
+Both options may be chosen at the same time and are computed in a robust way.
 }
   \item{table}{
 a logical value indicating whether a summary table with the test results should be printed.
