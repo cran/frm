@@ -1,9 +1,9 @@
-ee57cb2a0fe486892f4813c446b61df4 *DESCRIPTION
+558f087e60a85021b284b39bddaad73b *DESCRIPTION
 97a8ea26a9f38d38fe532f05963f89fa *NAMESPACE
-123daf6de2ba9c5f53a3669407441ddf *R/frm.R
-dbbf9e2213e234acdc3aab4c88b4ec3b *man/frm-package.Rd
-f53bc6e764a708c86257e434f36247eb *man/frm.Rd
-0e958ad572ff2f43a8670f0647aee775 *man/frm.ggoff.Rd
-32a7ba2ab0ab3d13d4c60b236e99f4a6 *man/frm.pe.Rd
-f7204c01ae5ca2ff3fa73d186b993016 *man/frm.ptest.Rd
-02cde522099d9a0f59b76637e39dab3d *man/frm.reset.Rd
+4f132483c3e50418a8dc3cab7c9823c8 *R/frm.R
+fd725d6a4a94ef432d2a3a4869b946b8 *man/frm-package.Rd
+2d072bdd366932007cc9a15cbf4427a3 *man/frm.Rd
+15a9628dd339457e35259bf0c3cc94f0 *man/frm.ggoff.Rd
+f6be341e4af6bb0577690c3db0417deb *man/frm.pe.Rd
+d310115a8b6067831df24a4614ac9b35 *man/frm.ptest.Rd
+dfa13872981ff8517cfe82b40b62ef4b *man/frm.reset.Rd

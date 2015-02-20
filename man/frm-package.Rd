@@ -1,15 +1,15 @@
 \name{frm-package}
 \alias{frm-package}
 \docType{package}
-\title{Regression analysis of fractional responses}
-\description{This package estimates one- and two-part fractional regression models, tests the models' specification and calculates partial effects.
+\title{Regression Analysis of Fractional Responses}
+\description{Estimation and specification analysis of one- and two-part fractional regression models and calculation of partial effects.
 }
 \details{
 \tabular{ll}{
 Package: \tab frm\cr
 Type: \tab Package\cr
-Version: \tab 1.2\cr
-Date: \tab 2014-01-29\cr
+Version: \tab 1.2.2\cr
+Date: \tab 2015-02-20\cr
 License: \tab GPL-2\cr
 }
 }

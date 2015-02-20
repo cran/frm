@@ -45,13 +45,14 @@ a logical value indicating whether a summary table with the results should be pr
 \code{frm}. \code{frm.pe} may be used to compute average or conditional partial effects for:
 (i) one-part fractional regression models; (ii) the binary component of two-part fractional
 regression models; (iii) the fractional component of two-part fractional regression
-models; and (iv) two-part fractional regression models. See Ramalho, Ramalho
-and Murteira (2011) for details on the computation of partial effects in the fractional
-regression framework.
+models; and (iv) two-part fractional regression models. For calculating standard errors, it 
+is taken into account the option that was previously chosen for estimating the model. See 
+Ramalho, Ramalho and Murteira (2011) for details on the computation of partial effects in 
+the fractional regression framework.
 }
 
 \value{
-\code{frm} returns a list with the following element:
+\code{frm.pe} returns a list with the following element:
   \item{PE.p}{a named vector of partial effects.
 }
 
@@ -60,7 +61,7 @@ If \code{variance = TRUE} or \code{table = TRUE}, the previous list also contain
 }
 
 When both average and conditional partial effects are requested, two lists containing the previous elements are 
-returned, indexed by the prefixes \code{resAPE} and \code{resCPE}.
+returned, indexed by the prefixes \code{ape} and \code{cpe}.
 }
 
 \references{
@@ -80,5 +81,30 @@ Joaquim J.S. Ramalho <jsr@uevora.pt>
 }
 
 \examples{
-## See the website http://evunix.uevora.pt/~jsr/FRM.htm.
+N <- 250
+u <- rnorm(N)
+
+X <- cbind(rnorm(N),rnorm(N))
+dimnames(X)[[2]] <- c("X1","X2")
+
+ym <- exp(X[,1]+X[,2]+u)/(1+exp(X[,1]+X[,2]+u))
+y <- rbeta(N,ym*20,20*(1-ym))
+y[y > 0.9] <- 1
+
+#Computing average partial effects for a logit fractional regression model
+res <- frm(y,X,linkfrac="logit",table=FALSE)
+frm.pe(res)
+
+#Computing average partial effects for a binary logit + fractional probit
+#two-part model
+res <- frm(y,X,linkbin="logit",linkfrac="probit",type="2P",inf=1,table=FALSE)
+frm.pe(res)
+
+#Computing conditional partial effects for X2 in the logit component
+#of a two-part fractional regression model, with the covariates evaluated
+#at their median values
+res <- frm(y,X,linkfrac="logit",type="2Pfrac",inf=1,table=FALSE)
+frm.pe(res,APE=FALSE,CPE=TRUE,at="median",which.x="X2")
+
+## See the website http://evunix.uevora.pt/~jsr/FRM.htm for more examples.
 }

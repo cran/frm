@@ -165,7 +165,7 @@ frm.table <- function(y,yhat,p,p.var,x.names,type,link,converged,var.type)
 			p.value <- formatC(p.value,digits=3,format="f")
 			stars <- format(stars,justify="left")
 
-			results <- data.frame(cbind(p,p.sd,z.ratio,p.value,stars))
+			results <- data.frame(cbind(p,p.sd,z.ratio,p.value,stars),row.names=NULL)
 
 			namcol <- c("Estimate","Std. Error","t value","Pr(>|t|)","")
 			dimnames(results) <- list(x.names,namcol)
@@ -345,7 +345,7 @@ frm.pe.table <- function(PE.p,PE.sd,PE.type,which.x,xvar.names,title,at)
 	p.value <- formatC(p.value,digits=3,format="f")
 	stars <- format(stars,justify="left")
 
-	results <- data.frame(cbind(PE.p,PE.sd,z.ratio,p.value,stars))
+	results <- data.frame(cbind(PE.p,PE.sd,z.ratio,p.value,stars),row.names=NULL)
 
 	namcol <- c("Estimate","Std. Error","t value","Pr(>|t|)","")
 	dimnames(results) <- list(which.x,namcol)
@@ -385,8 +385,8 @@ frm <- function(y,x,x2=x,linkbin,linkfrac,type="1P",inflation=0,intercept=T,tabl
 {
 	### 1. Error and warning messages
 
-	if(missing(y)) stop(sQuote(y)," - dependent variable is missing")
-	if(missing(x)) stop(sQuote(x)," - explanatory variables are missing")
+	if(missing(y)) stop("dependent variable is missing")
+	if(missing(x)) stop("explanatory variables are missing")
 
 	if(all(type!=c("1P","2Pbin","2Pfrac","2P"))) stop(sQuote(type)," - type not recognised")
 	if(any(y>1) | any(y<0)) stop("The dependent variable has values outside the unit interval")
@@ -1257,8 +1257,12 @@ frm.pe <- function(object,APE=T,CPE=F,at=NULL,which.x=NULL,variance=T,table=T)
 			}
 			else
 			{
-				if(any(x.names=="INTERCEPT")) xm <- c(1,at)
-				else xm <- at
+				if(is.numeric(at))
+				{
+					if(any(x.names=="INTERCEPT")) xm <- c(1,at)
+					else xm <- at
+				}
+				else stop("at not appropriately specified")
 			}
 		}
 		else
